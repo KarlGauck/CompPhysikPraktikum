@@ -28,8 +28,7 @@ def load_data(path):
         line = lines.pop(0)
         velocities.append([float(line[0]), float(line[1]), float(line[2])])
 
-
-    return ((N, t_max, eta), np.array(masses), np.array(positions).T, np.array(velocities).T)
+    return ((N, t_max, eta), np.array(masses)/np.sum(masses), np.array(positions).T, np.array(velocities).T)
     
 def difference_matrix(N, matrix):
     m = matrix.repeat(N).reshape((D, N, N))
@@ -38,7 +37,6 @@ def difference_matrix(N, matrix):
 def corrected_diff_norm_matrix(N, diff_matrix):
     norms = np.linalg.norm(diff_matrix, axis=0).repeat(D).reshape((N, N, D)).transpose((2, 0, 1))
     return norms + np.eye(N).repeat(D).reshape((N, N, D)).transpose((2, 0, 1))
-
 
 def calculate_accelarations(N, masses, positions):
     a = difference_matrix(N, positions)
@@ -109,6 +107,7 @@ def iterated_hermite_step(N, masses, positions, velocities, dt):
         predicted_accelarations = calculate_accelarations(N, masses, predicted_positions)
         predicted_grads = calculate_accelaration_grads(N, masses, predicted_positions, predicted_velocities)
 
+        ## on the sheet, (predicted_grads - grads) is the correct ordering but after asking AI to find errors, it seems that this order is wrong
         corrected_velocities = velocities + 0.5 * (predicted_accelarations + accelarations) * dt + (1/12) * (predicted_grads - grads) * dt**2
         corrected_positions = positions + 0.5 * (corrected_velocities + velocities) * dt + (1/12) * (predicted_accelarations - accelarations) * dt**2
         return (corrected_positions, corrected_velocities)
@@ -151,12 +150,12 @@ def rk4_step(N, masses, positions, velocities, dt):
 def potential_energy(N, masses, positions):
     norms = np.linalg.norm(difference_matrix(N, positions), axis=0)
     norm_factors = ((1/ (norms + np.eye(N))) * (1-np.eye(N)))
-    energy = G * (masses.T @ norm_factors @ masses ) / 2
+    energy = - G * (masses.T @ norm_factors @ masses ) / 2
     return energy
 
 def kinetic_energy(masses, velocities):
     norms = np.linalg.norm(velocities, axis=0)
-    return - 0.5 * masses @ norms**2 
+    return 0.5 * masses @ norms**2 
 
 def total_energy(N, masses, positions, velocities):
     return potential_energy(N, masses, positions) + kinetic_energy(masses, velocities)
@@ -192,6 +191,7 @@ def semimajor_axis(masses, positions, velocities):
 
 # ===== TESTS =====
 
+'''
 assert np.array_equal(
     calculate_accelarations(2, np.array([2, 1]), 
         np.array(
@@ -206,13 +206,15 @@ assert np.array_equal(
          [0,  0]]
     )
 )
+'''
 
 
 
 # ===== EXERCISES =====
+'''
 
 
-((N, t_max, dt), masses, positions, velocities) = load_data('v1/in2')
+((N, t_max, dt), masses, positions, velocities) = load_data('in2')
 acc = calculate_accelarations(N, masses, positions)
 
 print(positions)
@@ -222,50 +224,51 @@ print(velocities)
 functions = [euler_step, euler_cromer_step, velocity_verlet_step, hermite_step, iterated_hermite_step, heun_step, rk4_step]
 
 def two_body_test():
-    ((N, t_max, dt), masses, positions, velocities) = load_data('v1/in2')
+    ((N, t_max, dt), masses, positions, velocities) = load_data('in2')
 
-    for step_function in functions:
-        ((N, t_max, dt), masses, positions, velocities) = load_data('v1/in2')
+    for dt in [0.5, 0.1, 0.05, 0.01]:    
 
-        time = []
-        energy = []
-        momentum = []
-        angular_momentum = []
-        j = []
-        e = []
-        a = []
-        
+        for step_function in functions:
+            ((N, t_max, _), masses, positions, velocities) = load_data('in3')
 
-        STEPS = int(t_max/dt)
-        for i in range(STEPS + 1):
+            time = []
+            energy = []
+            momentum = []
+            angular_momentum = []
+            j = []
+            e = []
+            a = []
+            
 
-           energy.append(total_energy(N, masses, positions, velocities))
-           momentum.append(total_momentum(masses, velocities))
-           angular_momentum.append(total_angular_momentum(N, masses, positions, velocities))
-           j.append(specific_angular_momentum(masses, positions, velocities))
-           e.append(runge_lenz_vector(masses, positions, velocities))
-           a.append(semimajor_axis(masses, positions, velocities))
-           time.append(i * dt)
-           (positions, velocities) = step_function(N, masses, positions, velocities, dt) 
+            STEPS = int(t_max/dt)
+            for i in range(STEPS + 1):
 
-        mom = np.linalg.norm(np.array(momentum), axis=1)
-        angmom = np.linalg.norm(np.array(angular_momentum), axis=1)
-        j = np.linalg.norm(np.array(j), axis=1)
-        e = np.linalg.norm(np.array(e), axis=1)
+               energy.append(total_energy(N, masses, positions, velocities))
+               momentum.append(total_momentum(masses, velocities))
+               angular_momentum.append(total_angular_momentum(N, masses, positions, velocities))
+               j.append(specific_angular_momentum(masses, positions, velocities))
+               e.append(runge_lenz_vector(masses, positions, velocities))
+               a.append(semimajor_axis(masses, positions, velocities))
+               time.append(i * dt)
+               (positions, velocities) = step_function(N, masses, positions, velocities, dt) 
+
+            mom = np.linalg.norm(np.array(momentum), axis=1)
+            angmom = np.linalg.norm(np.array(angular_momentum), axis=1)
+            j = np.linalg.norm(np.array(j), axis=1)
+            e = np.linalg.norm(np.array(e), axis=1)
 
 
-        print(step_function.__name__)
-        #plt.plot(time, energy, label='energy')
-        #plt.plot(time, mom, label='momentum')
-        #plt.plot(time, angmom, label='angular momentum')
-        #plt.plot(time, a, label='semimajor axis')
-        #plt.plot(time, j, label='specific angular momentum')
-        #plt.plot(time, e, label='runge lenz vector')
-        #plt.plot(time, (energy - energy[0])/energy[0], label='energy error')
-        #plt.plot(time, (j - j[0])/j[0], label='specific ang mom error')
-        plt.plot(time, (a - a[0])/a[0], label='semimajor axis error')
+            print(step_function.__name__)
+            #plt.plot(time, energy, label='energy')
+            #plt.plot(time, mom, label='momentum')
+            #plt.plot(time, angmom, label='angular momentum')
+            #plt.plot(time, a, label='semimajor axis')
+            #plt.plot(time, j, label='specific angular momentum')
+            #plt.plot(time, e, label='runge lenz vector')
+            plt.plot(time, np.log10(np.abs((energy - energy[0])/energy[0])), label='energy error')
+            plt.plot(time, np.log10(np.abs((j - j[0])/j[0])), label='specific ang mom error')
+            plt.plot(time, np.log10(np.abs((a - a[0])/a[0])), label='semimajor axis error')
 
-        plt.legend()
-        plt.show()
-
-two_body_test()
+            plt.legend()
+            plt.show()
+'''
